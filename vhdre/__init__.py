@@ -1019,33 +1019,33 @@ entity {name} is
     ----------------------------------------------------------------------------
     -- Incoming UTF-8 bytestream
     ----------------------------------------------------------------------------
-    -- AXI4-style handshake signals. If `out_ready` is not used, `in_ready` can
+    -- AXI4-style handshake signals. If `output_ready` is not used, `input_ready` can
     -- be ignored because it will always be high.
-    in_valid                    : in  std_logic := '1';
-    in_ready                    : out std_logic;
+    input_valid                 : in  std_logic := '1';
+    input_ready                 : out std_logic;
 
-    -- Incoming byte(s). Each byte has its own validity flag (`in_strb`). This
+    -- Incoming byte(s). Each byte has its own validity flag (`input_strb`). This
     -- is independent of the "last" flags, allowing empty strings to be
     -- encoded. Bytes are interpreted LSB-first by default, or MSB-first if the
     -- `BIG_ENDIAN` generic is set.
-    in_strb                     : in  std_logic_vector(BPC-1 downto 0) := (others => '1');
-    in_endi                     : in  std_logic_vector(log2ceil(BPC)-1 downto 0) := (others => '1');
+    input_strb                  : in  std_logic_vector(BPC-1 downto 0) := (others => '1');
+    input_endi                  : in  std_logic_vector(log2ceil(BPC)-1 downto 0) := (others => '1');
 
-    in_data                     : in  std_logic_vector(BPC*8-1 downto 0);
+    input_data                  : in  std_logic_vector(BPC*8-1 downto 0);
 
     -- "Last-byte-in-string" marker signal for systems which support multiple
-    -- *strings* per cycle. Each bit corresponds to a byte in `in_strb` and
-    -- `in_data`.
-    in_last                    : in  std_logic_vector(BPC-1 downto 0) := (others => '0');
+    -- *strings* per cycle. Each bit corresponds to a byte in `input_strb` and
+    -- `input_data`.
+    input_last                  : in  std_logic_vector(BPC-1 downto 0) := (others => '0');
 
     ----------------------------------------------------------------------------
     -- Outgoing match stream
     ----------------------------------------------------------------------------
-    -- AXI4-style handshake signals. `out_ready` can be left unconnected if the
+    -- AXI4-style handshake signals. `output_ready` can be left unconnected if the
     -- stream sink can never block (for instance a simple match counter), in
     -- which case the input stream can never block either.
-    out_valid                   : out std_logic;
-    out_ready                   : in  std_logic := '1';
+    output_valid                : out std_logic;
+    output_ready                : in  std_logic := '1';
 
     -- Outgoing match stream for one-string-per-cycle systems. match indicates
     -- which of the following regexs matched:
@@ -1065,10 +1065,10 @@ entity {name} is
     --  - overlong sequences which are not apparent from the first byte
     
     -- Outgoing match stream for multiple-string-per-cycle systems.
-    out_strb                   : out std_logic_vector(BPC-1 downto 0);
-    out_endi                   : out std_logic_vector(log2ceil(BPC)-1 downto 0);
+    output_strb                 : out std_logic_vector(BPC-1 downto 0);
+    output_endi                 : out std_logic_vector(log2ceil(BPC)-1 downto 0);
 
-    out_data                  : out std_logic_vector(BPC*1-1 downto 0)
+    output_data                 : out std_logic_vector(BPC*1-1 downto 0)
   );
 end {name};
 
@@ -1686,8 +1686,8 @@ architecture Behavioral of {name} is
   ------------------------------------------------------------------------------
   -- Signal declarations
   ------------------------------------------------------------------------------
-  -- Internal copy of out_ready.
-  signal out_valid_i            : std_logic;
+  -- Internal copy of output_ready.
+  signal output_valid_i            : std_logic;
 
   -- Internal ready signal.
   signal ready                  : std_logic;
@@ -1847,25 +1847,25 @@ begin
   -- this is why you probably don't want to use vhdre's backpressure ports if
   -- you want serious throughput. Refer to "Notes on backpressure and timing
   -- closure".
-  ready <= out_ready or not out_valid_i;
+  ready <= output_ready or not output_valid_i;
   iclken <= clken and ready;
-  in_ready <= ready;
+  input_ready <= ready;
 
   -- Put the input stream record signal together.
-  inp_proc: process (in_valid, in_strb, in_endi, in_data, in_last) is
-    variable in_last_v : std_logic_vector(BPC-1 downto 0);
+  inp_proc: process (input_valid, input_strb, input_endi, input_data, input_last) is
+    variable input_last_v : std_logic_vector(BPC-1 downto 0);
   begin
 
     -- Assign the record signal.
     for i in 0 to BPC-1 loop
-      if (i <= unsigned(in_endi)) then
-          inp(i).valid <= in_valid and in_strb(i);
+      if (i <= unsigned(input_endi)) then
+          inp(i).valid <= input_valid and input_strb(i);
       else
         inp(i).valid <= '0';
       end if;
     
-      inp(i).data <= in_data(8*i+7 downto 8*i);
-      inp(i).last <= in_valid and in_last(i);
+      inp(i).data <= input_data(8*i+7 downto 8*i);
+      inp(i).last <= input_valid and input_last(i);
     end loop;
 
   end process;
@@ -1876,31 +1876,30 @@ begin
   begin
 
     -- Output is invalid unless any of the slots are valid.
-    out_valid_i <= '0';
+    output_valid_i <= '0';
 
     -- Unpack the output record.
     for i in 0 to BPC-1 loop
 
       -- Make the output valid when any of the slots are valid.
       if s5o(i).valid = '1' then
-        out_valid_i <= '1';
+        output_valid_i <= '1';
 
         -- Update the last valid slot value for endi signal
         last_valid := i;
       end if;
-      end if;
 
       -- Unpack into the `out_x*` signals.
-      out_strb(i)                                  <= s5o(i).valid;
-      out_data(NUM_RE*i+NUM_RE-1 downto NUM_RE*i)  <= s5o(i).match;
+      output_strb(i)                                  <= s5o(i).valid;
+      output_data(NUM_RE*i+NUM_RE-1 downto NUM_RE*i)  <= s5o(i).match;
 
     end loop;
 
-    out_endi <= std_logic_vector(to_unsigned(last_valid, BPC-1));
+    output_endi <= std_logic_vector(to_unsigned(last_valid, BPC-1));
 
   end process;
 
-  out_valid <= out_valid_i;
+  output_valid <= output_valid_i;
 
 end Behavioral;
 """
@@ -1918,10 +1917,10 @@ end {name}_tb;
 architecture Testbench of {name}_tb is
   signal clk                    : std_logic := '1';
   signal reset                  : std_logic := '1';
-  signal in_valid               : std_logic;
-  signal in_data                : std_logic_vector(7 downto 0);
-  signal in_last                : std_logic;
-  signal out_valid              : std_logic;
+  signal input_valid            : std_logic;
+  signal input_data             : std_logic_vector(7 downto 0);
+  signal input_last             : std_logic;
+  signal output_valid              : std_logic;
   signal out_match              : std_logic_vector({regex_count_m1} downto 0);
   signal out_error              : std_logic;
   signal out_match_mon          : std_logic_vector({regex_count_m1} downto 0);
@@ -1940,24 +1939,24 @@ begin
     procedure x(data_x: std_logic_vector) is
       constant data: std_logic_vector(data_x'length-1 downto 0) := data_x;
     begin
-      in_valid <= '1';
-      in_last <= '0';
+      input_valid <= '1';
+      input_last <= '0';
       for i in data'length/8-1 downto 0 loop
-        in_data <= data(i*8+7 downto i*8);
+        input_data <= data(i*8+7 downto i*8);
         if i = 0 then
-          in_last <= '1';
+          input_last <= '1';
         end if;
         wait until falling_edge(clk);
       end loop;
-      in_valid <= '0';
-      in_data <= (others => '0');
-      in_last <= '0';
+      input_valid <= '0';
+      input_data <= (others => '0');
+      input_last <= '0';
     end procedure;
   begin
     reset <= '1';
-    in_valid <= '0';
-    in_data <= (others => '0');
-    in_last <= '0';
+    input_valid <= '0';
+    input_data <= (others => '0');
+    input_last <= '0';
     wait for 500 ns;
     wait until falling_edge(clk);
     reset <= '0';
@@ -1970,10 +1969,10 @@ begin
     port map (
       clk                       => clk,
       reset                     => reset,
-      in_valid                  => in_valid,
-      in_data                   => in_data,
-      in_last                   => in_last,
-      out_valid                 => out_valid,
+      input_valid               => input_valid,
+      input_data                => input_data,
+      input_last                   => input_last,
+      output_valid                 => output_valid,
       out_match                 => out_match,
       out_error                 => out_error
     );
@@ -1981,10 +1980,10 @@ begin
   mon_proc: process (clk) is
   begin
     if falling_edge(clk) then
-      if to_X01(out_valid) = '1' then
+      if to_X01(output_valid) = '1' then
         out_match_mon <= out_match;
         out_error_mon <= out_error;
-      elsif to_X01(out_valid) = '0' then
+      elsif to_X01(output_valid) = '0' then
         out_match_mon <= (others => 'Z');
         out_error_mon <= 'Z';
       else
