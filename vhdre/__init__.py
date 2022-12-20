@@ -1024,25 +1024,19 @@ entity {name} is
     in_valid                    : in  std_logic := '1';
     in_ready                    : out std_logic;
 
-    -- Incoming byte(s). Each byte has its own validity flag (`in_mask`). This
+    -- Incoming byte(s). Each byte has its own validity flag (`in_strb`). This
     -- is independent of the "last" flags, allowing empty strings to be
     -- encoded. Bytes are interpreted LSB-first by default, or MSB-first if the
     -- `BIG_ENDIAN` generic is set.
-    in_mask                     : in  std_logic_vector(BPC-1 downto 0) := (others => '1');
+    in_strb                     : in  std_logic_vector(BPC-1 downto 0) := (others => '1');
+    in_endi                     : in  std_logic_vector(log2ceil(BPC)-1 downto 0) := (others => '1');
+
     in_data                     : in  std_logic_vector(BPC*8-1 downto 0);
 
-    -- "Last-byte-in-string" marker signal for systems which support at most
-    -- one *string* per cycle.
-    in_last                     : in  std_logic := '0';
-
-    -- ^
-    -- | Use exactly one of these!
-    -- v
-
     -- "Last-byte-in-string" marker signal for systems which support multiple
-    -- *strings* per cycle. Each bit corresponds to a byte in `in_mask` and
+    -- *strings* per cycle. Each bit corresponds to a byte in `in_strb` and
     -- `in_data`.
-    in_xlast                    : in  std_logic_vector(BPC-1 downto 0) := (others => '0');
+    in_last                    : in  std_logic_vector(BPC-1 downto 0) := (others => '0');
 
     ----------------------------------------------------------------------------
     -- Outgoing match stream
@@ -1069,14 +1063,12 @@ entity {name} is
     --  - code points 0x10FFFF to 0x13FFFF (these are out of range, at least
     --    at the time of writing)
     --  - overlong sequences which are not apparent from the first byte
-    out_match                   : out std_logic_vector({regex_count_m1} downto 0);
-    out_error                   : out std_logic;
-
+    
     -- Outgoing match stream for multiple-string-per-cycle systems.
-    out_xmask                   : out std_logic_vector(BPC-1 downto 0);
-    out_xmatch                  : out std_logic_vector(BPC*{regex_count}-1 downto 0);
-    out_xerror                  : out std_logic_vector(BPC-1 downto 0)
+    out_strb                   : out std_logic_vector(BPC-1 downto 0);
+    out_endi                   : out std_logic_vector(log2ceil(BPC)-1 downto 0);
 
+    out_data                  : out std_logic_vector(BPC*1-1 downto 0)
   );
 end {name};
 
@@ -1860,31 +1852,27 @@ begin
   in_ready <= ready;
 
   -- Put the input stream record signal together.
-  inp_proc: process (in_valid, in_mask, in_data, in_last, in_xlast) is
-    variable in_xlast_v : std_logic_vector(BPC-1 downto 0);
+  inp_proc: process (in_valid, in_strb, in_endi, in_data, in_last) is
+    variable in_last_v : std_logic_vector(BPC-1 downto 0);
   begin
-
-    -- Take the "last" flags from `in_xlast`.
-    in_xlast_v := in_xlast;
-
-    -- Allow `in_last` to override the "last" flag for the last slot.
-    if BIG_ENDIAN then
-      in_xlast_v(0) := in_xlast_v(0) or in_last;
-    else
-      in_xlast_v(BPC-1) := in_xlast_v(BPC-1) or in_last;
-    end if;
 
     -- Assign the record signal.
     for i in 0 to BPC-1 loop
-      inp(i).valid <= in_valid and in_mask(i);
+      if (i <= unsigned(in_endi)) then
+          inp(i).valid <= in_valid and in_strb(i);
+      else
+        inp(i).valid <= '0';
+      end if;
+    
       inp(i).data <= in_data(8*i+7 downto 8*i);
-      inp(i).last <= in_valid and in_xlast_v(i);
+      inp(i).last <= in_valid and in_last(i);
     end loop;
 
   end process;
 
   -- Unpack the output record.
   outp_proc: process (s5o) is
+    variable last_valid : natural range 0 to BPC-1 := 0;
   begin
 
     -- Output is invalid unless any of the slots are valid.
@@ -1896,23 +1884,19 @@ begin
       -- Make the output valid when any of the slots are valid.
       if s5o(i).valid = '1' then
         out_valid_i <= '1';
+
+        -- Update the last valid slot value for endi signal
+        last_valid := i;
+      end if;
       end if;
 
       -- Unpack into the `out_x*` signals.
-      out_xmask(i)                                  <= s5o(i).valid;
-      out_xmatch(NUM_RE*i+NUM_RE-1 downto NUM_RE*i) <= s5o(i).match;
-      out_xerror(i)                                 <= s5o(i).error;
+      out_strb(i)                                  <= s5o(i).valid;
+      out_data(NUM_RE*i+NUM_RE-1 downto NUM_RE*i)  <= s5o(i).match;
 
     end loop;
 
-    -- Unpack into the `out_*` signals.
-    if BIG_ENDIAN then
-      out_match <= s5o(0).match;
-      out_error <= s5o(0).error;
-    else
-      out_match <= s5o(BPC-1).match;
-      out_error <= s5o(BPC-1).error;
-    end if;
+    out_endi <= std_logic_vector(to_unsigned(last_valid, BPC-1));
 
   end process;
 
