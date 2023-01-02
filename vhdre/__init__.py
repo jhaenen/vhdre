@@ -1007,14 +1007,7 @@ entity {name} is
     ----------------------------------------------------------------------------
     -- `clk` is rising-edge sensitive.
     clk                         : in  std_logic;
-
-    -- `reset` is an active-high synchronous reset, `aresetn` is an active-low
-    -- asynchronous reset, and `clken` is an active-high global clock enable
-    -- signal. The resets override the clock enable signal. If your system has
-    -- no need for one or more of these signals, simply do not connect them.
-    reset                       : in  std_logic := '0';
-    aresetn                     : in  std_logic := '1';
-    clken                       : in  std_logic := '1';
+    rst                         : in  std_logic := '0';
 
     ----------------------------------------------------------------------------
     -- Incoming UTF-8 bytestream
@@ -1665,7 +1658,7 @@ architecture Behavioral of {name} is
     {s5_final:4}
 
     -- Reset the state when we're resetting or receiving the last character.
-    if reset = '1' or i.last = '1' then
+    if rst = '1' or i.last = '1' then
       s := S5S_RESET;
     end if;
 
@@ -1717,7 +1710,7 @@ begin
   ------------------------------------------------------------------------------
   -- Regex matcher logic
   ------------------------------------------------------------------------------
-  match: process (clk, aresetn) is
+  match: process (clk) is
 
     -- Reset procedure.
     procedure reset_all is
@@ -1804,13 +1797,8 @@ begin
     variable s5sv  : s5s_type;
 
   begin
-    if aresetn = '0' then
-
-      -- Asynchronous reset.
-      reset_all;
-
-    elsif rising_edge(clk) then
-      if reset = '1' then
+    if rising_edge(clk) then
+      if rst = '1' then
 
         -- Synchronous reset.
         reset_all;
@@ -1848,7 +1836,7 @@ begin
   -- you want serious throughput. Refer to "Notes on backpressure and timing
   -- closure".
   ready <= output_ready or not output_valid_i;
-  iclken <= clken and ready;
+  iclken <= ready;
   input_ready <= ready;
 
   -- Put the input stream record signal together.
@@ -1916,7 +1904,7 @@ end {name}_tb;
 
 architecture Testbench of {name}_tb is
   signal clk                    : std_logic := '1';
-  signal reset                  : std_logic := '1';
+  signal rst                  : std_logic := '1';
   signal input_valid            : std_logic;
   signal input_data             : std_logic_vector(7 downto 0);
   signal input_last             : std_logic;
@@ -1953,13 +1941,13 @@ begin
       input_last <= '0';
     end procedure;
   begin
-    reset <= '1';
+    rst <= '1';
     input_valid <= '0';
     input_data <= (others => '0');
     input_last <= '0';
     wait for 500 ns;
     wait until falling_edge(clk);
-    reset <= '0';
+    rst <= '0';
     wait until falling_edge(clk);
     {stimuli:4}
     wait;
@@ -1968,7 +1956,7 @@ begin
   uut: entity work.{name}
     port map (
       clk                       => clk,
-      reset                     => reset,
+      rst                     => rst,
       input_valid               => input_valid,
       input_data                => input_data,
       input_last                   => input_last,
