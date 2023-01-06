@@ -978,6 +978,9 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+library work;
+use work.{project_name}.all;
+
 entity {name} is
   generic (
 
@@ -2215,11 +2218,12 @@ class RegexMatcher(object):
                 value = value.replace("\n", "\n" + " "*int(format_spec))
             return value
 
-    def __init__(self, name, *regexs):
+    def __init__(self, name, project_name, *regexs):
         super().__init__()
 
         # Save the name.
         self.name = name
+        self.project_name = project_name
 
         # Create a formatter for this object.
         self.formatter = self.Formatter(self)
@@ -2302,6 +2306,9 @@ class RegexMatcher(object):
 
     def _fmt_name(self):
         return self.name
+
+    def _fmt_project_name(self):
+        return self.project_name
 
     def _fmt_regex_comments(self):
         return "\n".join(["--  - %d: /%s/" % x for x in enumerate(self.orig_regexs)])
